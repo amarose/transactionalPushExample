@@ -1,40 +1,109 @@
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Preview
+This exmaple provides a simplified solution for implementing transactional push notification.
+Dictionary:
+* **User ID:** ID of customer from your platform
+* **Subscriber ID:** ID of user subscribed to notifications  (PPG)
 
-## Getting Started
+Test case part 1 (these steps are required to connect Users from your system to their IDs in PPG):
+1. User subscribes to notifications and recieves **Subscriber ID** / User is already subscribed
+2. User loggs into application
+3. **User ID** is appended to dataLayer after login
+4. PPG collects **User ID** from dataLayer (by creating selector in PPG app)
+5. User leaves site - after 15 minutes **User ID** is matched with **Subscriber ID** in PPG app
 
-First, run the development server:
+Test case part 2 (send push to matched Subscriber)
+6. Set up trigger for sending push notification, when your User contract expires in less than 30 days. (In this example we set up button for triggering that action)
+7. After clicking button, push notification will be sent
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+# Implementation
+To make transactional push work in your platform you have to complete 4 steps:
+1. Send your Users ID to the data layer
+2. Generate API key for your project (https://app.pushpushgo.com/user/access-manager/keys)
+3. Implement endpoint for getting **Subscriber ID** 
+```typescript
+// Replace PROJECT_ID with your project ID - you can get it from PPG app
+// Replace USER_ID with your User ID
+// Replace API_KEY with key generated in step 2
+const  response  =  await  fetch(
+	`https://api.pushpushgo.com/core/projects/PROJECT_ID/external_ids/USER_ID`,
+	{
+		method:  "GET",
+		headers: {
+			"Content-Type":  "application/json",
+			"X-Token":  "API_KEY",
+		},
+	}
+);
 ```
+This request will return array of subscriber IDs linked to given USER_ID. In your case it should return only 1 element inside array.
+```typescript
+{​
+	"externalId":  "string",​
+	"subscriberIds":  [​
+		"string"​
+	]​
+​}
+```
+4.  After receiving Subscriber ID from previous step. Implement sending transactional push. Endpoint with example payload:
+```typescript
+// Replace PROJECT_ID with your project ID - you can get it from PPG app
+// Replace SUBSCRIBER_ID with ID received from previous endpoint
+// Replace API_KEY with key generated in step 2
+const  response  =  await  fetch(
+	`https://api.pushpushgo.com/core/projects/PROJECT_ID/pushes/transaction`,
+	{	
+		method:  "POST",
+		body:  JSON.stringify({
+		omitCapping:  true,
+		message: {
+			actions: [
+				{
+					clickUrl:  "https://test.com",
+					title:  "Test action",
+				},
+			],
+			title:  "Test - your contract will expire in 30 days",
+			content:  "Contact us",
+			clickUrl:  "https://test.com",
+			requireInteraction:  true,
+			direction:  "ltr",
+			ttl:  70,
+		},
+		to:  SUBSCRIBER_ID,
+		}),
+		headers: {
+			"Content-Type":  "application/json",
+			"X-Token":  "API_KEY",
+		},
+	}
+);
+``` 
+# Testing
+To run example locally:
+```bash
+npm install
+npm run dev
+```
+or you can test it on test site:
+`https://exampletransactionaltestcase.vercel.app/`
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Example includes 3 users:
+```json
+{ id:  "1111", username:  "user1", password:  "password1" },
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+{ id:  "2222", username:  "user2", password:  "password2" },
 
-[API routes](https://nextjs.org/docs/api-routes/introduction) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+{ id:  "3333", username:  "user3", password:  "password3" },
+```
+**IMPORTANT**: While testing, you should use one user per one browser profile to maintain real life example.
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
-
-This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-optimization) to automatically optimize and load Inter, a custom Google Font.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
+#### Test exaple using user1 and test domain:
+1. Open new browser profile
+2. Go to site: https://exampletransactionaltestcase.vercel.app/
+3. Subscribe to notifications (User is not logged in yet, so for now we only know his subscriber ID)
+4. Login in using credentials - user1, password1
+5. After 1-2 seconds you will be logged into dashboard. You can open dataLayer (window.dataLayer) in console and. There should be user1 ID - 1111. While  user is logged in, PPG selector collects that user ID from dataLayer
+6. Leave the site and wait for 15 mins (this is the time required to process the data). After that time User will be matched with his Subscriber ID in PPG app.
+7. Now you can enter https://exampletransactionaltestcase.vercel.app/ again and  login to user1 account. You can click button called **Get PPG subscribers IDS connected with dataLayer ID** (it should display Subscriber ID of user1, so it means that User ID and Subscriber ID are matched correctly)
+8. Trigger the transactional push by clicking on button **Trigger contract expiration**
+9. You should receive push notification shortly
