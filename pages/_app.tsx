@@ -2,7 +2,6 @@ import "@/styles/globals.css";
 import type { AppProps } from "next/app";
 import { useEffect, useState } from "react";
 import CookieConsent from 'react-cookie-consent';
-import Script from 'next/script';
 
 declare global {
   interface Window {
@@ -11,25 +10,16 @@ declare global {
   }
 }
 
-function initializeGA() {
-  window.dataLayer = window.dataLayer || [];
-  window.gtag = function (...args: any[]) {
-    window.dataLayer.push(args);
-  };
-  window.gtag('js', new Date());
-  window.gtag('config', 'G-3FV871C4QN', {
-    // Add further configuration to respect user privacy
-    send_page_view: true, // Set to true or false as required
-    anonymize_ip: true, // Anonymizes the IP address of the user
-  });
-}
-
 export default function App({ Component, pageProps }: AppProps) {
   
   useEffect(() => {
     const hasConsented = localStorage.getItem('GA_Consent');
     if (hasConsented === 'true') {
-      initializeGA();
+      // Enable page views tracking after consent
+      window.gtag('js', new Date());
+      window.gtag('config', 'G-3FV871C4QN', {
+        send_page_view: true
+      });
     }
 
     if ('serviceWorker' in navigator) {
@@ -57,20 +47,23 @@ export default function App({ Component, pageProps }: AppProps) {
       window.dataLayer[existingUserDataEventIndex].userData = userData;
     } else {
       // If the event doesn't exist, push a new 'userData' event to the dataLayer
-      window.dataLayer.push({
+      window.dataLayer.splice(0, 0, {
         event: "userLoggedIn",
         userData: userData,
       });
     }
   }, []);
 
+  const handleAccept = () => {
+    localStorage.setItem('GA_Consent', 'true');
+    window.gtag('js', new Date());
+    window.gtag('config', 'G-3FV871C4QN', {
+      send_page_view: true  // Now send page view upon consent
+    });
+  };
+
   return (
     <>
-      <Script
-        src="https://www.googletagmanager.com/gtag/js?id=G-3FV871C4QN"
-        strategy="afterInteractive"
-        onLoad={initializeGA}
-      />
       <CookieConsent
         location="bottom"
         buttonText="I understand"
@@ -78,12 +71,9 @@ export default function App({ Component, pageProps }: AppProps) {
         style={{ background: "#2B373B" }}
         buttonStyle={{ color: "#4e503b", fontSize: "13px" }}
         expires={150}
-        onAccept={() => {
-          localStorage.setItem('GA_Consent', 'true');
-          initializeGA(); // Initialize Google Analytics on accept
-        }}
+        onAccept={handleAccept}
       >
-        This website uses cookies to enhance the user experience.
+        This website uses cookies to enhance the user experience!
       </CookieConsent>
       <Component {...pageProps} />
     </>
